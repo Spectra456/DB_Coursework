@@ -130,7 +130,12 @@ libraryWin = Toplevel(root)
 libraryWin.withdraw()
 style = ttk.Style(root)
 style.configure('listBoxType.Treeview', rowheight=41)
+
+style1 = ttk.Style(root)
+style1.configure('listBox.Treeview', rowheight=15)
+
 libraryWin.geometry('900x500')
+libraryWin.resizable(False, False)
 root.geometry('200x300+500+200')
 root.resizable(False, False)
 
@@ -188,11 +193,7 @@ for i, col in enumerate(cols):
     listBox.heading(col, text=col)
     listBox.grid(row=1, column=0)
 
-sb1 = Scrollbar(tab1)
-sb1.grid(row=2, column=2, rowspan=6)
 
-listBox.configure(yscrollcommand=sb1.set)
-sb1.configure(command=listBox.yview)
 
 listBox.bind('<<TreeviewSelect>>', selectItem)
 
@@ -632,7 +633,7 @@ def clientList():
     tempList = cursor.fetchall()
 
     e2Journal['values'] = tempList
-
+    e1Features['values'] = tempList
 def selectItemJournal(a):
     global selected_tupleJournal
     curItem = listBoxJournal.focus()
@@ -716,6 +717,7 @@ def insert_commandJournal():
     (trunc(:first), trunc(:second), SYSDATE ,SYSDATE + (SELECT day_count FROM book_types
     JOIN Books ON books.type_id = book_types.id
     WHERE Books.id = 1) , to_date(:third, 'yyyy-mm-dd hh24:mi:ss'))"""
+
     print(cursor.execute(sql, {'first': int(bookJournal.get().rsplit(' ', 1)[0]), 'second': int(clientJournal.get().rsplit(' ', 3)[0]),
                                'third': dateRetJournal.get()}))
     db.commit()
@@ -752,7 +754,7 @@ e1Journal.grid()
 e1Journal.config(height=5, width=19)
 e1Journal.place(x=655, y=20)
 
-l2Journal = Label(tab4, text="Client ID", bg='gray91')
+l2Journal = Label(tab4, text="Client", bg='gray91')
 l2Journal.grid()
 l2Journal.place(x=655, y=50)
 
@@ -791,5 +793,121 @@ insertJournal.pack()
 insertJournal.place(x=655, y = 390)
 insertJournal.config(height=1, width=18)
 
+# FEATURES
+
+def booksCount(event):
+
+    ip = 'localhost'
+    port = 32118
+    SID = 'XE'
+    dsn_tns = cx_Oracle.makedsn(ip, port, SID)
+    db = cx_Oracle.connect('spectra', '12345', dsn_tns)
+    cursor = db.cursor()
+
+    sql = """SELECT COUNT(*) FROM clients
+                    JOIN journal ON journal.client_id = clients.id
+                    WHERE clients.id = trunc(:first) AND journal.date_ret IS NULL"""
+    cursor.execute(sql, {'first': int(clientFeatures.get().rsplit(' ', 3)[0])})
+
+    temp = cursor.fetchall()
+    cntBook.config(text=str('Amount of books: ') + str(temp[0][0]))
+#####
+    sql = """SELECT SUM(fine*(-EXTRACT(day FROM (date_end - date_ret)))) from journal
+             JOIN book_types ON journal.book_id = book_types.id
+             AND (EXTRACT(day FROM (date_end - date_ret)) < 0) AND client_id = trunc(:first)"""
+    cursor.execute(sql, {'first': int(clientFeatures.get().rsplit(' ', 3)[0])})
+
+    temp = cursor.fetchall()
+    fineClient.config(text=str('Fine: ') + str(temp[0][0]))
+
+    pass
+
+
+def showFine():
+    ip = 'localhost'
+    port = 32118
+    SID = 'XE'
+    dsn_tns = cx_Oracle.makedsn(ip, port, SID)
+    db = cx_Oracle.connect('spectra', '12345', dsn_tns)
+    cursor = db.cursor()
+
+    cursor.execute("""SELECT MAX(fine*(-EXTRACT(day FROM (date_end - date_ret)))) from journal
+                        JOIN book_types ON journal.book_id = book_types.id
+                        AND (EXTRACT(day FROM (date_end - date_ret)) < 0)""")
+
+    temp = cursor.fetchall()
+    maxFine.config(text=str('Maximum fine: ') + str(temp[0][0]))
+    showTop()
+
+
+def showTop():
+    listBoxTop.delete(*listBoxTop.get_children())
+    ip = 'localhost'
+    port = 32118
+    SID = 'XE'
+    dsn_tns = cx_Oracle.makedsn(ip, port, SID)
+    db = cx_Oracle.connect('spectra', '12345', dsn_tns)
+    cursor = db.cursor()
+
+    cursor.execute("""(SELECT books.name from (SELECT book_id,
+                      COUNT(*) AS Cnt
+                      FROM journal
+                      GROUP BY book_id
+                      ORDER BY CNT DESC)
+                      JOIN Books ON Books.id = book_id
+                      WHERE rownum <= 3)""")
+
+    tempList = cursor.fetchall()
+
+    for (book) in tempList:
+        listBoxTop.insert("", "end", values=(book))
+    db.close()
+
+cntBook = Label(tab5, text="", bg='gray91')
+cntBook.grid()
+cntBook.place(x=310, y=20)
+
+fineClient = Label(tab5, text="", bg='gray91')
+fineClient.grid()
+fineClient.place(x=450, y=20)
+
+l1Features = Label(tab5, text="Client", bg='gray91')
+l1Features.grid()
+l1Features.place(x=0, y=0)
+
+clientFeatures = StringVar()
+e1Features = ttk.Combobox(tab5, textvariable=clientFeatures, postcommand =clientList)
+e1Features.grid()
+e1Features.bind("<<ComboboxSelected>>", booksCount)
+e1Features.config(height=5, width=30)
+e1Features.place(x=0, y=20)
+
+showMaxFine = Button(tab5, text="Update", width=15, command=showFine,highlightbackground ='gray91')
+showMaxFine.pack()
+showMaxFine.place(x=770, y = 16)
+showMaxFine.config(height=1, width=5)
+
+maxFine = Label(tab5, text="", bg='gray91')
+maxFine.grid()
+maxFine.place(x=600, y=20)
+
+
+top = Label(tab5, text="Top 3 books", bg='gray91')
+top.grid()
+top.place(x=0, y=80)
+
+colsTop = ('books')
+widthTop = (200)
+listBoxTop = ttk.Treeview(tab5, columns=colsTop, show='headings', style = 'listBox.Treeview')
+listBoxTop.pack()
+listBoxTop.place(x=0, y=100)
+
+
+
+# set column headings
+for i, col in enumerate(colsJournal):
+    listBoxJournal.column(col,width=widthJournal[i],stretch=0, anchor=CENTER)
+    listBoxJournal.heading(col, text=col)
+    listBoxJournal.grid(row=1, column=0)
 
 root1.mainloop()
